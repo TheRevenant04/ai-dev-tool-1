@@ -2,17 +2,38 @@
 
 A responsive web app for planning and managing shared household chores.
 
-## Version 1 scope
+## Local development
 
-- One household per account
-- User registration and login
-- Household membership through a join code
-- One administrator and standard household members
-- One-off and recurring chores
-- Daily, weekly, and monthly recurrence
-- Automatic rotation of recurring chore assignments
-- Administrator assignment overrides
-- Date-grouped chore list
-- In-app reminders
+This project uses Django, SQLite, and `uv`.
 
-Fairness metrics, gamification, calendar views, email or push notifications, multiple households, and mobile-specific apps are outside the initial scope.
+```powershell
+uv sync
+$env:DJANGO_SECRET_KEY = "change-this-for-local-development"
+$env:DJANGO_DEBUG = "true"
+$env:DJANGO_ALLOWED_HOSTS = "localhost,127.0.0.1"
+uv run python manage.py migrate
+uv run python manage.py check
+uv run python manage.py test
+uv run python manage.py runserver
+```
+
+Open <http://127.0.0.1:8000/> after starting the development server. Copy
+`.env.example` for the available environment variables when using a dotenv
+loader or deployment platform; Django reads `DJANGO_SECRET_KEY`,
+`DJANGO_DEBUG`, and `DJANGO_ALLOWED_HOSTS` from the environment.
+
+## Features
+
+- User registration, login, and logout
+- One household per account, with administrator/member roles
+- Household creation and eight-character join codes
+- Administrator-only chore create, edit, and delete
+- One-off, daily, weekly, and monthly chores
+- Deterministic recurring assignment rotation
+- Per-occurrence administrator assignment overrides
+- Completion history with completing user and timestamp
+- Date-grouped upcoming/due/completed list and in-app reminders
+
+The Django admin is available at `/admin/`. Email, push notifications,
+multiple households, calendar views, and gamification are intentionally out
+of scope.
