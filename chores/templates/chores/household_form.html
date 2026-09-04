@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card"><h1>{{ heading }}</h1>
+  <form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Create household</button></form>
+  <p>Joining an existing household? <a href="{% url 'household-join' %}">Use a join code</a>.</p>
+</div>
+{% endblock %}

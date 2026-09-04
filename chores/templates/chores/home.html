@@ -1,14 +1,13 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Household chores</title>
-  </head>
-  <body>
-    <main>
-      <h1>Household chores</h1>
-      <p>Plan and share chores with your household.</p>
-    </main>
-  </body>
-</html>
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>Shared chores, without the nagging</h1>
+  <p>Plan one-off and recurring chores, rotate assignments fairly, and keep everyone in the loop.</p>
+  {% if user.is_authenticated %}
+    <a class="button" href="{% url 'dashboard' %}">Open household</a>
+  {% else %}
+    <a class="button" href="{% url 'register' %}">Get started</a>
+    <a class="button secondary" href="{% url 'login' %}">Log in</a>
+  {% endif %}
+</section>
+{% endblock %}

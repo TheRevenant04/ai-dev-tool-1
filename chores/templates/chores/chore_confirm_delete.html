@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card"><h1>Delete {{ chore.title }}?</h1>
+  <p>This removes its occurrences and completion history.</p>
+  <form method="post">{% csrf_token %}<button class="button danger" type="submit">Delete</button>
+  <a class="button secondary" href="{% url 'dashboard' %}">Cancel</a></form>
+</div>
+{% endblock %}

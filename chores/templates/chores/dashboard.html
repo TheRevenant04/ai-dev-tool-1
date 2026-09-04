@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ household.name }} · Household chores{% endblock %}
+{% block content %}
+<header class="card">
+  <h1>{{ household.name }}</h1>
+  <p class="muted">Join code: <strong>{{ household.code }}</strong> · {{ household.memberships.count }} member{{ household.memberships.count|pluralize }}</p>
+  {% if membership.is_admin %}<a class="button" href="{% url 'chore-create' %}">Add chore</a>{% endif %}
+</header>
+{% if reminders %}
+<section class="card"><h2>Reminders</h2>
+  <ul>{% for occurrence in reminders|slice:":8" %}<li>{% if occurrence.due_date < today %}<strong>Overdue:</strong>{% else %}<strong>Due soon:</strong>{% endif %}
+    {{ occurrence.chore.title }} · {{ occurrence.due_date|date:"M j" }} ({{ occurrence.assignee|default:"unassigned" }})</li>{% endfor %}</ul>
+</section>
+{% endif %}
+{% for due_date, occurrences in grouped_occurrences %}
+<section class="card"><h2>{{ due_date|date:"l, F j, Y" }}</h2>
+  {% for occurrence in occurrences %}
+  <div class="{% if occurrence.is_completed %}done{% endif %}" style="padding:.6rem 0;border-top:1px solid #eee">
+    <strong>{{ occurrence.chore.title }}</strong>
+    {% if occurrence.chore.description %}<span class="muted"> — {{ occurrence.chore.description }}</span>{% endif %}
+    <div class="muted">Assigned to {{ occurrence.assignee|default:"nobody" }}
+      {% if occurrence.completed_by %} · completed by {{ occurrence.completed_by }}{% endif %}</div>
+    {% if not occurrence.is_completed and occurrence.assignee_id == user.id or not occurrence.is_completed and membership.is_admin %}
+      <form class="inline" method="post" action="{% url 'occurrence-complete' occurrence.id %}">{% csrf_token %}<button type="submit">Mark complete</button></form>
+    {% endif %}
+    {% if membership.is_admin %}
+      <a class="button secondary" href="{% url 'occurrence-override' occurrence.chore.id due_date|date:'Y-m-d' %}">Assign</a>
+      <a href="{% url 'chore-edit' occurrence.chore.id %}">Edit chore</a>
+      <a href="{% url 'chore-delete' occurrence.chore.id %}">Delete</a>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% empty %}
+<section class="card"><p>No chores yet. {% if membership.is_admin %}<a href="{% url 'chore-create' %}">Add the first one</a>.{% endif %}</p></section>
+{% endfor %}
+{% endblock %}

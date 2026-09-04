@@ -21,5 +21,20 @@ from chores import views
 urlpatterns = [
     path('', views.home, name='home'),
     path('health/', views.health_check, name='health-check'),
+    path('accounts/register/', views.register, name='register'),
+    path('accounts/login/', views.UserLoginView.as_view(), name='login'),
+    path('accounts/logout/', views.logout_view, name='logout'),
+    path('households/create/', views.household_create, name='household-create'),
+    path('households/join/', views.household_join, name='household-join'),
+    path('chores/', views.dashboard, name='dashboard'),
+    path('chores/new/', views.chore_create, name='chore-create'),
+    path('chores/<int:pk>/edit/', views.chore_edit, name='chore-edit'),
+    path('chores/<int:pk>/delete/', views.chore_delete, name='chore-delete'),
+    path(
+        'chores/<int:chore_id>/occurrence/<str:due_date>/assign/',
+        views.occurrence_override,
+        name='occurrence-override',
+    ),
+    path('occurrences/<int:occurrence_id>/complete/', views.occurrence_complete, name='occurrence-complete'),
     path('admin/', admin.site.urls),
 ]

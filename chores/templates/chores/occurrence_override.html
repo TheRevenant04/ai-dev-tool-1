@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card"><h1>Assign {{ chore.title }}</h1>
+  <p>Occurrence due {{ occurrence.due_date|date:"F j, Y" }}.</p>
+  <form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Save assignment</button>
+  <a class="button secondary" href="{% url 'dashboard' %}">Cancel</a></form>
+</div>
+{% endblock %}
