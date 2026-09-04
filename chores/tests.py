@@ -1,6 +1,8 @@
-from datetime import timedelta
+from calendar import monthrange
+from datetime import date, timedelta
 
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -46,6 +48,40 @@ class HouseholdWorkflowTests(TestCase):
     def test_protected_dashboard_redirects_to_login(self):
         response = self.client.get(reverse("dashboard"))
         self.assertRedirects(response, f"{reverse('login')}?next={reverse('dashboard')}")
+
+    def test_duplicate_username_is_rejected(self):
+        User.objects.create_user("existing", password="SafePass123!")
+        response = self.client.post(
+            reverse("register"),
+            {"username": "existing", "password1": "SafePass123!", "password2": "SafePass123!"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "A user with that username already exists.")
+
+    def test_invalid_login_is_rejected(self):
+        User.objects.create_user("person", password="SafePass123!")
+        response = self.client.post(reverse("login"), {"username": "person", "password": "wrong"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Please enter a correct username and password.")
+
+    def test_user_cannot_create_or_join_multiple_households(self):
+        owner = User.objects.create_user("owner", password="SafePass123!")
+        self.client.force_login(owner)
+        self.client.post(reverse("household-create"), {"name": "First home"})
+        first = Household.objects.get(name="First home")
+        response = self.client.post(reverse("household-create"), {"name": "Second home"})
+        self.assertRedirects(response, reverse("dashboard"))
+        self.assertFalse(Household.objects.filter(name="Second home").exists())
+        response = self.client.post(reverse("household-join"), {"code": first.code})
+        self.assertRedirects(response, reverse("dashboard"))
+        self.assertEqual(Membership.objects.filter(user=owner).count(), 1)
+
+    def test_invalid_join_code_is_rejected(self):
+        user = User.objects.create_user("joiner", password="SafePass123!")
+        self.client.force_login(user)
+        response = self.client.post(reverse("household-join"), {"code": "INVALID1"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "No household was found with that code.")
 
 
 class ChorePermissionTests(TestCase):
@@ -94,6 +130,39 @@ class ChorePermissionTests(TestCase):
         )
         self.assertEqual(Chore.objects.get(pk=laundry.pk).title, "Laundry room")
         self.assertEqual(self.client.post(reverse("chore-delete", args=[laundry.pk])).status_code, 302)
+
+    def test_member_cannot_delete_chore(self):
+        self.client.force_login(self.member)
+        response = self.client.post(reverse("chore-delete", args=[self.chore.pk]))
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Chore.objects.filter(pk=self.chore.pk).exists())
+
+    def test_chore_assignee_must_belong_to_household(self):
+        outsider = User.objects.create_user("outsider", password="SafePass123!")
+        chore = Chore(
+            household=self.household,
+            title="Invalid assignment",
+            schedule_type=Chore.ONE_OFF,
+            due_date=self.today,
+            created_by=self.admin,
+            assignee=outsider,
+        )
+        with self.assertRaises(ValidationError):
+            chore.full_clean()
+
+    def test_member_cannot_see_other_household_chore(self):
+        other_house = Household.objects.create(name="Other", code="IJKLMNOP", created_by=self.other)
+        Membership.objects.create(household=other_house, user=self.other, role=Membership.ADMIN)
+        private_chore = Chore.objects.create(
+            household=other_house,
+            title="Private chore",
+            schedule_type=Chore.ONE_OFF,
+            due_date=self.today,
+            created_by=self.other,
+        )
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("chore-edit", args=[private_chore.pk]))
+        self.assertEqual(response.status_code, 403)
 
 
 class RotationAndCompletionTests(TestCase):
@@ -150,3 +219,79 @@ class RotationAndCompletionTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Bins")
         self.assertContains(response, "Reminders")
+
+    def test_one_off_chore_has_only_one_scheduled_date(self):
+        one_off = Chore.objects.create(
+            household=self.household,
+            title="One-off",
+            schedule_type=Chore.ONE_OFF,
+            due_date=self.start,
+            created_by=self.first,
+        )
+        dates = list(one_off.scheduled_dates(self.start, self.start + timedelta(days=5)))
+        self.assertEqual(dates, [self.start])
+
+    def test_weekly_and_monthly_recurrence_dates(self):
+        weekly = Chore.objects.create(
+            household=self.household,
+            title="Weekly",
+            schedule_type=Chore.WEEKLY,
+            due_date=self.start,
+            created_by=self.first,
+        )
+        monthly_start = date(self.start.year, 1, 31)
+        monthly = Chore.objects.create(
+            household=self.household,
+            title="Monthly",
+            schedule_type=Chore.MONTHLY,
+            due_date=monthly_start,
+            created_by=self.first,
+        )
+        self.assertTrue(weekly.is_due_on(self.start + timedelta(days=7)))
+        self.assertFalse(weekly.is_due_on(self.start + timedelta(days=1)))
+        february_last = date(monthly_start.year, 2, monthrange(monthly_start.year, 2)[1])
+        self.assertTrue(monthly.is_due_on(february_last))
+
+    def test_inactive_chores_are_excluded_from_dashboard(self):
+        self.chore.active = False
+        self.chore.save(update_fields=("active",))
+        self.client.force_login(self.first)
+        response = self.client.get(reverse("dashboard"))
+        self.assertNotContains(response, "Bins")
+
+    def test_rotation_handles_single_member(self):
+        Membership.objects.filter(user=self.second).delete()
+        self.assertEqual(
+            occurrence_for(self.chore, self.start + timedelta(days=4)).assignee,
+            self.first,
+        )
+
+    def test_assignment_override_survives_refresh(self):
+        due = self.start + timedelta(days=1)
+        occurrence = occurrence_for(self.chore, due)
+        occurrence.assignee = self.first
+        occurrence.assignment_overridden = True
+        occurrence.save(update_fields=("assignee", "assignment_overridden"))
+        self.assertEqual(occurrence_for(self.chore, due).assignee, self.first)
+
+    def test_assigned_member_can_complete_and_second_completion_is_idempotent(self):
+        occurrence = occurrence_for(self.chore, self.start)
+        self.client.force_login(occurrence.assignee)
+        self.client.post(reverse("occurrence-complete", args=[occurrence.pk]))
+        occurrence.refresh_from_db()
+        completed_at = occurrence.completed_at
+        self.client.post(reverse("occurrence-complete", args=[occurrence.pk]))
+        occurrence.refresh_from_db()
+        self.assertEqual(occurrence.completed_by, occurrence.assignee)
+        self.assertEqual(occurrence.completed_at, completed_at)
+
+    def test_completed_occurrence_is_not_a_reminder(self):
+        occurrence = occurrence_for(self.chore, self.start)
+        occurrence.completed_at = timezone.now()
+        occurrence.completed_by = self.first
+        occurrence.save(update_fields=("completed_at", "completed_by"))
+        self.chore.active = False
+        self.chore.save(update_fields=("active",))
+        self.client.force_login(self.first)
+        response = self.client.get(reverse("dashboard"))
+        self.assertNotContains(response, "Reminders")
