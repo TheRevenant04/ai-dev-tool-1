@@ -1,3 +1,4 @@
+from calendar import monthrange
 from datetime import timedelta
 import secrets
 import string
@@ -5,6 +6,7 @@ import string
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 
 
 class Household(models.Model):
@@ -42,6 +44,11 @@ class Membership(models.Model):
         ordering = ("joined_at", "id")
         constraints = [
             models.UniqueConstraint(fields=("household", "user"), name="unique_household_membership"),
+            models.UniqueConstraint(
+                fields=("household",),
+                condition=Q(role="admin"),
+                name="one_household_admin",
+            ),
         ]
 
     def __str__(self):
@@ -96,7 +103,8 @@ class Chore(models.Model):
             return True
         if self.schedule_type == self.WEEKLY:
             return (on_date - self.due_date).days % 7 == 0
-        return on_date.day == self.due_date.day
+        target_day = min(self.due_date.day, monthrange(on_date.year, on_date.month)[1])
+        return on_date.day == target_day
 
     def recurrence_index(self, on_date):
         if self.schedule_type == self.DAILY:
@@ -115,7 +123,7 @@ class Chore(models.Model):
             current += timedelta(days=1)
 
     def assignment_for_date(self, on_date):
-        if self.assignee_id and self.schedule_type == self.ONE_OFF:
+        if self.schedule_type == self.ONE_OFF:
             return self.assignee
         members = list(
             User.objects.filter(household_memberships__household=self.household)
