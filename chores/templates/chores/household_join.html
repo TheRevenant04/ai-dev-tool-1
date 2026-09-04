@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card"><h1>Join a household</h1>
+  <p>Ask an administrator for the eight-character household code.</p>
+  <form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Join household</button></form>
+  <p>Starting a new one? <a href="{% url 'household-create' %}">Create a household</a>.</p>
+</div>
+{% endblock %}
